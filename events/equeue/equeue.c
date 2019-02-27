@@ -21,6 +21,10 @@
 #include <string.h>
 
 
+#include <stdio.h>
+#define LOG(...) printf(__VA_ARGS__); printf("\r\n")
+
+
 // calculate the relative-difference between absolute times while
 // correctly handling overflow conditions
 static inline int equeue_tickdiff(unsigned a, unsigned b) {
@@ -50,8 +54,9 @@ int equeue_create(equeue_t *q, size_t size) {
     if (!buffer) {
         return -1;
     }
-
     int err = equeue_create_inplace(q, size, buffer);
+    LOG("create\tsize:\t%4d,\tstart:\t0x%08X,\tend:\t0x%08X\tuntouched:\t%4d,unused:\t%4d", size, buffer, buffer+size, q->slab.size, q->not_used);
+
     q->allocated = buffer;
     return err;
 }
@@ -69,6 +74,7 @@ int equeue_create_inplace(equeue_t *q, size_t size, void *buffer) {
     q->chunks = 0;
     q->slab.size = size;
     q->slab.data = buffer;
+    q->not_used = size;
 
     q->queue = 0;
     q->tick = equeue_tick();
@@ -130,6 +136,13 @@ static struct equeue_event *equeue_mem_alloc(equeue_t *q, size_t size) {
 
     equeue_mutex_lock(&q->memlock);
 
+    struct equeue_event **p = &q->chunks;
+    int i = 0;
+    while (*p) {
+        p = &(*p)->next;
+        i++;
+    }
+    LOG("########## chunks: %d ##########", i);
     // check if a good chunk is available
     for (struct equeue_event **p = &q->chunks; *p; p = &(*p)->next) {
         if ((*p)->size >= size) {
@@ -141,7 +154,10 @@ static struct equeue_event *equeue_mem_alloc(equeue_t *q, size_t size) {
                 *p = e->next;
             }
 
+            q->not_used -= size;
+            e->allocated = true;
             equeue_mutex_unlock(&q->memlock);
+            LOG("alloc\t0x%08X\tsize:\t%4d,\tstart:\t0x%08X,\tend:\t0x%08X\tuntouched:\t%4d,unused:\t%4d (reusing)", 0, size, e, e + size, q->slab.size, q->not_used);
             return e;
         }
     }
@@ -154,7 +170,10 @@ static struct equeue_event *equeue_mem_alloc(equeue_t *q, size_t size) {
         e->size = size;
         e->id = 1;
 
+        q->not_used -= size;
+        e->allocated = true;
         equeue_mutex_unlock(&q->memlock);
+        LOG("alloc\t0x%08X\tsize:\t%4d,\tstart:\t0x%08X,\tend:\t0x%08X\tuntouched:\t%4d,unused:\t%4d (new)", 0, size, e, e + size, q->slab.size, q->not_used);
         return e;
     }
 
@@ -165,6 +184,11 @@ static struct equeue_event *equeue_mem_alloc(equeue_t *q, size_t size) {
 static void equeue_mem_dealloc(equeue_t *q, struct equeue_event *e) {
     equeue_mutex_lock(&q->memlock);
 
+    if (!e->allocated)
+    {
+        LOG("########## chunks not allocated ##########");
+        return;
+    }
     // stick chunk into list of chunks
     struct equeue_event **p = &q->chunks;
     while (*p && (*p)->size < e->size) {
@@ -180,7 +204,10 @@ static void equeue_mem_dealloc(equeue_t *q, struct equeue_event *e) {
     }
     *p = e;
 
+    q->not_used += e->size;
+    e->allocated = false;
     equeue_mutex_unlock(&q->memlock);
+    LOG("dealloc\t0x%08X\tsize:\t%4d,\tstart:\t0x%08X,\tend:\t0x%08X\tuntouched:\t%4d,unused:\t%4d", e->cb, e->size, e, e + e->size, q->slab.size, q->not_used);
 }
 
 void *equeue_alloc(equeue_t *q, size_t size) {
@@ -347,6 +374,7 @@ int equeue_post(equeue_t *q, void (*cb)(void*), void *p) {
     unsigned tick = equeue_tick();
     e->cb = cb;
     e->target = tick + e->target;
+    LOG("post\t0x%08X\tsize:\t%4d,\tstart:\t0x%08X,\tend:\t0x%08X", e->cb, e->size, e, e + e->size);
 
     int id = equeue_enqueue(q, e, tick);
     equeue_sema_signal(&q->eventsema);

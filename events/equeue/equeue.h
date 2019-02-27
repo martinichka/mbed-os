@@ -52,6 +52,7 @@ struct equeue_event {
 
     void (*cb)(void *);
     // data follows
+    bool allocated;
 };
 
 // Event queue structure
@@ -70,6 +71,7 @@ typedef struct equeue {
         size_t size;
         unsigned char *data;
     } slab;
+    size_t not_used;
 
     struct equeue_background {
         bool active;
