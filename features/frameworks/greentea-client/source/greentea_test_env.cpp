@@ -73,15 +73,15 @@ void _GREENTEA_SETUP_COMMON(const int timeout, const char *host_test_name, char 
 
     char _key[8] = {0};
 
-    while (1) {
-        greentea_parse_kv(_key, buffer, sizeof(_key), size);
-        greentea_write_string("mbedmbedmbedmbedmbedmbedmbedmbed\r\n");
-        if (strcmp(_key, GREENTEA_TEST_ENV_SYNC) == 0) {
-            // Found correct __sync message
-            greentea_send_kv(_key, buffer);
-            break;
-        }
-    }
+//    while (1) {
+//        greentea_parse_kv(_key, buffer, sizeof(_key), size);
+//        greentea_write_string("mbedmbedmbedmbedmbedmbedmbedmbed\r\n");
+//        if (strcmp(_key, GREENTEA_TEST_ENV_SYNC) == 0) {
+//            // Found correct __sync message
+//            greentea_send_kv(_key, buffer);
+//            break;
+//        }
+//    }
 
     greentea_notify_version();
     greentea_notify_timeout(timeout);
